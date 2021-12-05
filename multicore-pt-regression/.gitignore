@@ -127,16 +127,3 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-
-Compare_benchmark/
-misc_code/
-Res_LG-Lprob/
-Res_LG01/
-Res_LG001/
-Res_Maxtemp/
-Res_RW/
-Res_SwapInterval/
-PT-NN-v3.docx
-Results_Dropout_PT_v3.xlsx
-Rossler_0/
-.DS_Store
