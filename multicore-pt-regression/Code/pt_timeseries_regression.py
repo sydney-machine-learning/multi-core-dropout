@@ -986,7 +986,7 @@ def main():
   
         timer = time.time() 
 
-        langevin_prob = i/10
+        langevin_prob = 0.5
         
     
 

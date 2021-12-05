@@ -197,13 +197,6 @@ class ptReplica(multiprocessing.Process): #class is defined as inheriting from m
 
         return np.sqrt(((pred-actual)**2).mean())
 
-'''
-def rmse_per_output(self, pred, actual):
-        individual_rmse = np.zeros(self.topology[2])
-        for i in range(0, self.topology[2]):
-            individual_rmse[i] = np.sqrt(np.square(pred[:, i] - actual[:, i]).mean())
-        return individual_rmse
-        '''
 
     def accuracy(self,pred,actual ):
         count = 0
@@ -258,16 +251,6 @@ def rmse_per_output(self, pred, actual):
         log_loss = part1 - part2
         return log_loss
 
-'''
-    def prior_likelihood(self, sigma_squared, nu_1, nu_2, w, tausq):
-        h = self.topology[1]  # number hidden neurons
-        d = self.topology[0]  # number input neurons
-        part1 = -1 * ((d * h + h + 2) / 2) * np.log(sigma_squared)
-        part2 = 1 / (2 * sigma_squared) * (sum(np.square(w)))
-        log_loss = part1 - part2 - (1 + nu_1) * np.log(tausq) - (nu_2 / tausq)
-        return log_loss
-        '''
-    
     def run(self):
         #INITIALISING FOR FNN
         testsize = self.testdata.shape[0]
@@ -1086,9 +1069,9 @@ def main():
 
 
 
-        problemfolder = '/home/rohit/Desktop/PT/PT_EvalSwapRW/'  # change this to your directory for results output - produces large datasets
+        problemfolder = 'fix_likeh/origin/results/'  # change this to your directory for results output - produces large datasets
 
-        problemfolder_db = 'PT_EvalSwapRW/'  # save main results
+        problemfolder_db = 'fix_likeh/origin/results_db/'  # save main results
 
     
 
