@@ -989,8 +989,8 @@ def main():
             output = 2
             NumSample = 50000 
         if problem == 7: #PenDigit
-            traindata = np.genfromtxt('DATA/PenDigit/train.csv',delimiter=',')
-            testdata = np.genfromtxt('DATA/PenDigit/test.csv',delimiter=',')
+            traindata = np.genfromtxt('DATA/PenDigit/train.csv',delimiter=',') #relative path (needs to cd the current folder that contains DATA)
+            testdata = np.genfromtxt('DATA/PenDigit/test.csv',delimiter=',') # / - absolute path, no /: relative path -> use relative path to run on diff computers
             name = "PenDigit"
             for k in range(16):
                 mean_train = np.mean(traindata[:,k])
@@ -1058,7 +1058,7 @@ def main():
         maxtemp = 10
  
         num_chains = 10
-        swap_ratio = 0.02 #float(sys.argv[1])
+        swap_ratio = 0.02 #float(sys.argv[1]) - to use for run.sh
         swap_interval = int(swap_ratio * NumSample/num_chains)    # int(swap_ratio * (NumSample/num_chains)) #how ofen you swap neighbours. note if swap is more than Num_samples, its off
         burn_in = 0.5
      
