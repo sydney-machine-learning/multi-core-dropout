@@ -321,7 +321,7 @@ class ptReplica(multiprocessing.Process):
 
             lx = np.random.uniform(0,1,1)
 
-            if (self.use_langevin_gradients is True) and (lx< self.l_prob):  
+            if (self.use_langevin_gradients is True) and (lx< self.l_prob): #how often do we use langevin
                 w_gd = fnn.langevin_gradient(self.traindata, w.copy(), self.sgd_depth) # Eq 8
                 w_proposal = np.random.normal(w_gd, step_w, w_size) # Eq 7
                 w_prop_gd = fnn.langevin_gradient(self.traindata, w_proposal.copy(), self.sgd_depth) 
@@ -343,11 +343,11 @@ class ptReplica(multiprocessing.Process):
 
                 
 
-            else:
+            else: #Random walk
                 diff_prop = 0
                 w_proposal = np.random.normal(w, step_w, w_size)
-
-            eta_pro = eta + np.random.normal(0, step_eta, 1)
+### Accept or reject proposals
+            eta_pro = eta + np.random.normal(0, step_eta, 1) #add noise to update tau
             tau_pro = math.exp(eta_pro)
     
   
@@ -399,7 +399,7 @@ class ptReplica(multiprocessing.Process):
 
                 #print (i, langevin_count, self.adapttemp, diff_prop ,  likelihood, rmsetrain, rmsetest, acc_train[i+1,], acc_test[i+1,] , 'accepted') 
 
-                pos_w[i+ 1,] = w_proposal
+                pos_w[i+ 1,] = w_proposal #when proposal is accpeted, it becomes posterior
 
                 #fxtrain_samples[i + 1,] = pred_train
                 #fxtest_samples[i + 1,] = pred_test

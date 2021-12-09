@@ -23,18 +23,23 @@ from scipy.stats import norm
 
 import io  
 
+from enum import Enum
+class DropoutType(Enum):
+    ORIGIN = 1
+    DROP_CONNECT = 2
+    GAUSSIAN_DROPOUT = 3
+
 class Network:
 
-    def __init__(self, Topo, Train, Test, learn_rate, input_dropout, hidden_dropout):
+    def __init__(self, Topo, Train, Test, learn_rate, input_dropout, hidden_dropout, dropout_type: DropoutType):
         self.Top = Topo  # NN topology [input, hidden, output]
         self.TrainData = Train
         self.TestData = Test
         self.lrate = learn_rate
-        assert 0 <= input_dropout < 1, "input_dropout parameter must be in range [0,1)"
         self.input_dropout = input_dropout
-
-        assert 0 <= hidden_dropout < 1, "hidden_dropout parameter must be in range [0,1)"
         self.hidden_dropout = hidden_dropout
+        self.dropout_type = dropout_type
+
         self.W1 = np.random.randn(self.Top[0], self.Top[1]) / np.sqrt(self.Top[0])
         self.B1 = np.random.randn(1, self.Top[1]) / np.sqrt(self.Top[1])  # bias first layer
         self.W2 = np.random.randn(self.Top[1], self.Top[2]) / np.sqrt(self.Top[1])
@@ -51,115 +56,107 @@ class Network:
         sqerror = np.sum(np.square(error)) / self.Top[2]
         return sqerror
 
-    def ForwardPass(self, X, dropout_type, eval=False):
-        if dropout_type == "original dropout":
-            self.dropout_mask = (np.random.rand(*X.shape) > self.input_dropout).astype(float)
-            if not eval:
-                X = X * self.dropout_mask / (1.0 - self.input_dropout)
+    def ForwardPass(self, X, eval=False):
+        if eval:
+            input_dropout = 0
+            hidden_dropout = 0
+        else:
+            input_dropout = self.input_dropout
+            hidden_dropout = self.hidden_dropout
 
+        if self.dropout_type == DropoutType.ORIGIN:
             z1 = X.dot(self.W1) - self.B1
+            if input_dropout == 0:
+                self.input_dropout_mask = np.ones_like(z1)
+            else:
+                self.input_dropout_mask = (np.random.rand(*z1.shape) > input_dropout).astype(float)
+            z1 = z1 * self.input_dropout_mask / (1.0 - input_dropout) # dropout on z1
             self.hidout = self.sigmoid(z1)  # output of first hidden layer
 
-            # dropout mask for hidden
-            self.hidden_dropout_mask = (np.random.rand(*self.hidout.shape) > self.hidden_dropout).astype(float)
-            if not eval:
-                self.hidout = self.hidout * self.hidden_dropout_mask / (1.0 - self.hidden_dropout)
-        
             z2 = self.hidout.dot(self.W2) - self.B2
-            self.out = self.sigmoid(z2)  # output second hidden layer
-            self.pred_class = np.argmax(self.out)
+            if hidden_dropout == 0:
+                self.hidden_dropout_mask = np.ones_like(z2)
+            else:
+                self.hidden_dropout_mask = (np.random.rand(*z2.shape) > hidden_dropout).astype(float)
+            z2 = z2 * self.hidden_dropout_mask / (1.0 - hidden_dropout) # dropout on z2
+            self.out = self.sigmoid(z2)
 
-        if dropout_type == "dropconnect":
-            #we use gaussian ditribution for weight, dropconnect is applied even in testing phase 
-            sigma1 = self.input_dropout * (1 - self.input_dropout)
-            self.dropout_mask_for_W1 = np.random.normal(1, sigma1, self.W1.shape)
-            self.dropout_mask_for_B1 = np.random.normal(1, sigma1, self.B1.shape)
-
-            #update W1 and B1
-            self.W1 = self.W1 * self.dropout_mask_for_W1
-            self.B1 = self.B1 * self.dropout_mask_for_B1
-
-            z1 = X.dot(self.W1) - self.B1
-            self.hidout = self.sigmoid(z1)  # output of first hidden layer
-
-            # dropout mask for hidden
-            sigma2 = self.hidden_dropout * (1 - self.hidden_dropout)
-            self.hidden_dropout_mask_for_W2 = np.random.normal(1, sigma2, self.W2.shape)
-            self.hidden_dropout_mask_for_B2 = np.random.normal(1, sigma2, self.B2.shape)
-
-            #update W2 and B2
-            self.W2 = self.W2 * self.hidden_dropout_mask_for_W2
-            self.B2 = self.B2 * self.hidden_dropout_mask_for_B2
-
-            z2 = self.hidout.dot(self.W2) - self.B2
-            self.out = self.sigmoid(z2)  # output second hidden layer
-            self.pred_class = np.argmax(self.out)
-
-        if dropout_type == "gaussian dropout":
-            sigma1 = self.input_dropout * (1 - self.input_dropout)
-            self.gaussian_dropout_mask = np.random.normal(1, sigma1, X.shape)
-            #since gaussian dropout can be applied at test time too, no need for eval
-            X = X * self.gaussian_dropout_mask
-
-            z1 = X.dot(self.W1) - self.B1
-            self.hidout = self.sigmoid(z1)  # output of first hidden layer
-
-            # dropout mask for hidden
-            sigma2 = self.hidden_dropout * (1 - self.hidden_dropout)
-            self.hidden_gaussian_dropout_mask = np.random.normal(1, sigma2, self.hidout.shape)
-            self.hidout = self.hidout * self.hidden_gaussian_dropout_mask
-        
-            z2 = self.hidout.dot(self.W2) - self.B2
-            self.out = self.sigmoid(z2)  # output second hidden layer
-            self.pred_class = np.argmax(self.out)
-
-        #print(self.pred_class, self.out, '  ---------------- out ')
-
-    '''def BackwardPass(self, Input, desired):
-        out_delta = (desired - self.out).dot(self.out.dot(1 - self.out))
-        hid_delta = out_delta.dot(self.W2.T) * (self.hidout * (1 - self.hidout))
-        print(self.B2.shape)
-        self.W2 += (self.hidout.T.reshape(self.Top[1],1).dot(out_delta) * self.lrate)
-        self.B2 += (-1 * self.lrate * out_delta)
-        self.W1 += (Input.T.reshape(self.Top[0],1).dot(hid_delta) * self.lrate)
-        self.B1 += (-1 * self.lrate * hid_delta)'''
-
-
- 
-
-    def BackwardPass(self, Input, dropout_type, desired): # since data outputs and number of output neuons have different orgnisation
-        onehot = np.zeros((desired.size, self.Top[2]))
-        onehot[np.arange(desired.size),int(desired)] = 1
-        desired = onehot
-        if dropout_type == "original dropout":
-            out_delta = (desired - self.out) * (self.out * (1 - self.out))
-
-            hid_delta = out_delta.dot(self.W2.T) * (self.hidout * (1 - self.hidout))
-
-        # apply dropout mask to hidden delta
-            hid_delta = hid_delta * self.hidden_dropout_mask / (1.0 - self.hidden_dropout)
-
-        if dropout_type == "dropconnect":
-            out_delta = (desired - self.out) * (self.out * (1 - self.out))
+        elif self.dropout_type == DropoutType.DROP_CONNECT:
+            if input_dropout == 0:
+                self.input_dropout_mask = np.ones_like(self.W1)
+            else:
+                self.input_dropout_mask = (np.random.rand(*self.W1.shape) > input_dropout).astype(float)
             
-            # apply dropout mask to W2
-            self.W2 = self.W2 * self.hidden_dropout_mask_for_W2
+            z1 = X.dot(self.W1 * self.input_dropout_mask / (1.0 - input_dropout)) - self.B1
+            self.hidout = self.sigmoid(z1)  # output of first hidden layer
 
-            hid_delta = out_delta.dot(self.W2.T) * (self.hidout * (1 - self.hidout))
+            if hidden_dropout == 0:
+                self.hidden_dropout_mask = np.ones_like(self.W2)
+            else:
+                self.hidden_dropout_mask = (np.random.rand(*self.W2.shape) > hidden_dropout).astype(float)
+            z2 = self.hidout.dot(self.W2 * self.hidden_dropout_mask / (1.0 - hidden_dropout)) - self.B2
+            self.out = self.sigmoid(z2)
 
-        if dropout_type == "gaussian dropout":
+        elif self.dropout_type == DropoutType.GAUSSIAN_DROPOUT:
+            z1 = X.dot(self.W1) - self.B1
+            if input_dropout == 0:
+                self.input_dropout_mask = np.ones_like(z1)
+            else:
+                sigma1 = input_dropout * (1 - input_dropout)
+                self.input_dropout_mask = np.random.normal(1, sigma1, z1.shape)
+            z1  = z1 * self.input_dropout_mask
+            self.hidout = self.sigmoid(z1)  # output of first hidden layer
+
+            z2 = self.hidout.dot(self.W2) - self.B2
+            if hidden_dropout == 0:
+                self.hidden_dropout_mask = np.ones_like(z2)
+            else:
+                sigma2 = hidden_dropout * (1 - hidden_dropout)
+                self.hidden_dropout_mask = np.random.normal(1, sigma2, z2.shape)
+            z2 = z2 * self.hidden_dropout_mask
+            self.out = self.sigmoid(z2)
+
+        else: # no dropout
+            z1 = X.dot(self.W1) - self.B1
+            self.hidout = self.sigmoid(z1)  # output of first hidden layer
+            z2 = self.hidout.dot(self.W2) - self.B2
+            self.out = self.sigmoid(z2)  # output second hidden layer
+
+    def BackwardPass(self, Input, desired):
+        if self.dropout_type == DropoutType.ORIGIN:
             out_delta = (desired - self.out) * (self.out * (1 - self.out))
-
             hid_delta = out_delta.dot(self.W2.T) * (self.hidout * (1 - self.hidout))
 
-        # apply dropout mask to hidden delta, no need to scale mask
-            hid_delta = hid_delta * self.hidden_gaussian_dropout_mask
+            self.W2 += self.lrate * self.hidout[:, np.newaxis].dot((self.hidden_dropout_mask * out_delta / (1.0 - self.hidden_dropout))[np.newaxis, :])
+            self.B2 += -self.lrate * (self.hidden_dropout_mask * out_delta / (1.0 - self.hidden_dropout))
+            self.W1 += self.lrate * Input[:, np.newaxis].dot((self.input_dropout_mask * hid_delta / (1.0 - self.input_dropout))[np.newaxis, :])
+            self.B1 += -self.lrate * (self.input_dropout_mask * hid_delta / (1.0 - self.input_dropout))
 
-        self.W2 += np.dot(self.hidout.T,(out_delta * self.lrate))
-        self.B2 += (-1 * self.lrate * out_delta)
-        Input = Input.reshape(1,self.Top[0])
-        self.W1 += np.dot(Input.T,(hid_delta * self.lrate))
-        self.B1 += (-1 * self.lrate * hid_delta)
+        elif self.dropout_type == DropoutType.DROP_CONNECT:
+            out_delta = (desired - self.out) * (self.out * (1 - self.out))
+            hid_delta = out_delta.dot(self.W2.T) * (self.hidout * (1 - self.hidout))
+
+            self.W2 += self.lrate * self.hidout[:, np.newaxis].dot(out_delta[np.newaxis, :]) * self.hidden_dropout_mask / (1.0 - self.hidden_dropout)
+            self.B2 += -self.lrate * (out_delta)
+            self.W1 += self.lrate * Input[:, np.newaxis].dot(hid_delta[np.newaxis, :]) * self.input_dropout_mask / (1.0 - self.input_dropout)
+            self.B1 += -self.lrate * (hid_delta)
+
+        elif self.dropout_type == DropoutType.GAUSSIAN_DROPOUT:
+            out_delta = (desired - self.out) * (self.out * (1 - self.out))
+            hid_delta = out_delta.dot(self.W2.T) * (self.hidout * (1 - self.hidout))
+
+            self.W2 += self.lrate * self.hidout[:, np.newaxis].dot((self.hidden_dropout_mask * out_delta)[np.newaxis, :])
+            self.B2 += -self.lrate * (self.hidden_dropout_mask * out_delta)
+            self.W1 += self.lrate * Input[:, np.newaxis].dot((self.input_dropout_mask * hid_delta)[np.newaxis, :])
+            self.B1 += -self.lrate * (self.input_dropout_mask * hid_delta)
+        else:
+            out_delta = (desired - self.out) * (self.out * (1 - self.out))
+            hid_delta = out_delta.dot(self.W2.T) * (self.hidout * (1 - self.hidout))
+
+            self.W2 += self.lrate * self.hidout[:, np.newaxis].dot(out_delta[np.newaxis, :])
+            self.B2 += -self.lrate * out_delta
+            self.W1 += self.lrate * Input[:, np.newaxis].dot(hid_delta[np.newaxis, :])
+            self.B1 += -self.lrate * hid_delta
 
 
     def decode(self, w):
@@ -236,7 +233,7 @@ class Network:
 
 class ptReplica(multiprocessing.Process): #class is defined as inheriting from multiprocess.Process
 #The first thing ptRplica does in its initialization is to initialize its base Process, to ensure it's ready to run
-    def __init__(self, use_langevin_gradients, learn_rate, input_dropout, hidden_dropout, w,  minlim_param, maxlim_param, samples, traindata, testdata, topology, burn_in, temperature, swap_interval, path, parameter_queue, main_process,event ):
+    def __init__(self, use_langevin_gradients, learn_rate, input_dropout, hidden_dropout, dropout_type, w,  minlim_param, maxlim_param, samples, traindata, testdata, topology, burn_in, temperature, swap_interval, path, parameter_queue, main_process,event ):
         #MULTIPROCESSING VARIABLES
         multiprocessing.Process.__init__(self)
         self.processID = temperature
@@ -271,6 +268,8 @@ class ptReplica(multiprocessing.Process): #class is defined as inheriting from m
 
         self.input_dropout = input_dropout
         self.hidden_dropout = hidden_dropout
+        self.dropout_type = dropout_type
+
         self.l_prob = 0.5  # can be evaluated for diff problems - if data too large keep this low value since the gradients cost comp time
         self.w_size =0
 
@@ -389,7 +388,7 @@ class ptReplica(multiprocessing.Process): #class is defined as inheriting from m
         #Randomwalk Steps
         step_w = 0.025
         #Declare FNN
-        fnn = Network(self.topology, self.traindata, self.testdata, learn_rate, input_dropout, hidden_dropout)
+        fnn = Network(self.topology, self.traindata, self.testdata, learn_rate, self.input_dropout, self.hidden_dropout, self.dropout_type)
         #Evaluate Proposals
         pred_train, prob_train = fnn.evaluate_proposal(self.traindata,w) #	
         pred_test, prob_test = fnn.evaluate_proposal(self.testdata, w) #
@@ -619,7 +618,7 @@ class ptReplica(multiprocessing.Process): #class is defined as inheriting from m
 
 class ParallelTempering:
 
-    def __init__(self,  use_langevin_gradients, learn_rate, input_dropout, hidden_dropout, traindata, testdata, topology, num_chains, maxtemp, NumSample, swap_interval, path):
+    def __init__(self,  use_langevin_gradients, learn_rate, input_dropout, hidden_dropout, dropout_type, traindata, testdata, topology, num_chains, maxtemp, NumSample, swap_interval, path):
         #FNN Chain variables
         self.traindata = traindata
         self.testdata = testdata
@@ -656,6 +655,7 @@ class ParallelTempering:
         self.learn_rate = learn_rate
         self.input_dropout = input_dropout
         self.hidden_dropout = hidden_dropout
+        self.dropout_type = dropout_type
 
         self.use_langevin_gradients = use_langevin_gradients
 
@@ -781,7 +781,7 @@ class ParallelTempering:
         for i in range(0, self.num_chains):
 
             w = np.random.randn(self.num_param)
-            self.chains.append(ptReplica( self.use_langevin_gradients, self.learn_rate, self.input_dropout, self.hidden_dropout, w,  self.minlim_param, self.maxlim_param, self.NumSamples,self.traindata,self.testdata,self.topology,self.burn_in,self.temperatures[i],self.swap_interval,self.path,self.parameter_queue[i],self.wait_chain[i],self.event[i]))
+            self.chains.append(ptReplica( self.use_langevin_gradients, self.learn_rate, self.input_dropout, self.hidden_dropout, self.dropout_type, w,  self.minlim_param, self.maxlim_param, self.NumSamples,self.traindata,self.testdata,self.topology,self.burn_in,self.temperatures[i],self.swap_interval,self.path,self.parameter_queue[i],self.wait_chain[i],self.event[i]))
 
     def surr_procedure(self,queue):
 
@@ -1168,15 +1168,16 @@ def main():
         learn_rate = 0.01  # in case langevin gradients are used. Can select other values, we found small value is ok. 
         input_dropout = 0.1
         hidden_dropout = 0.1
+        dropout_type = DropoutType.GAUSSIAN_DROPOUT
 
         use_langevin_gradients =False # False leaves it as Random-walk proposals. Note that Langevin gradients will take a bit more time computationally
 
 
 
 
-        problemfolder = 'PT/'  # change this to your directory for results output - produces large datasets
+        problemfolder = 'fix_likeh/gaussian_dropout/results/'  # change this to your directory for results output - produces large datasets
 
-        problemfolder_db = 'PT_EvalSwapRW/'  # save main results
+        problemfolder_db = 'fix_likeh/gaussian_dropout/results_db/'  # save main results
 
     
 
@@ -1204,7 +1205,7 @@ def main():
         
     
 
-        pt = ParallelTempering( use_langevin_gradients,  learn_rate, input_dropout, hidden_dropout, traindata, testdata, topology, num_chains, maxtemp, NumSample, swap_interval, path)
+        pt = ParallelTempering( use_langevin_gradients,  learn_rate, input_dropout, hidden_dropout, dropout_type, traindata, testdata, topology, num_chains, maxtemp, NumSample, swap_interval, path)
 
         directories = [  path+'/predictions/', path+'/posterior', path+'/results', path+'/surrogate', path+'/surrogate/learnsurrogate_data', path+'/posterior/pos_w',  path+'/posterior/pos_likelihood',path+'/posterior/surg_likelihood',path+'/posterior/accept_list'  ]
     
