@@ -7,15 +7,22 @@ from scipy.stats import norm
 import math
 import os
 
-
+from enum import Enum
+class DropoutType(Enum):
+    ORIGIN = 1
+    DROP_CONNECT = 2
+    GAUSSIAN_DROPOUT = 3
 # An example of a class
 class Network:
-	def __init__(self, Topo, Train, Test, learn_rate):
+	def __init__(self, Topo, Train, Test, learn_rate, input_dropout, hidden_dropout, dropout_type: DropoutType):
 		self.Top = Topo  # NN topology [input, hidden, output]
 		self.TrainData = Train
 		self.TestData = Test
 		np.random.seed()
 		self.lrate = learn_rate
+		self.input_dropout = input_dropout
+		self.hidden_dropout = hidden_dropout
+		self.dropout_type = dropout_type
 
 		self.W1 = np.random.randn(self.Top[0], self.Top[1]) / np.sqrt(self.Top[0])
 		self.B1 = np.random.randn(1, self.Top[1]) / np.sqrt(self.Top[1])  # bias first layer
@@ -33,34 +40,108 @@ class Network:
 		sqerror = np.sum(np.square(error)) / self.Top[2]
 		return sqerror
 
-	def ForwardPass(self, X):
-		z1 = X.dot(self.W1) - self.B1
-		self.hidout = self.sigmoid(z1)  # output of first hidden layer
-		z2 = self.hidout.dot(self.W2) - self.B2
-		self.out = self.sigmoid(z2)  # output second hidden layer
+	def ForwardPass(self, X, eval=False):
+		if eval:
+			input_dropout = 0
+			hidden_dropout = 0
+		else:
+			input_dropout = self.input_dropout
+			hidden_dropout = self.hidden_dropout
+			
+		if self.dropout_type == DropoutType.ORIGIN:
+			z1 = X.dot(self.W1) - self.B1
+			if input_dropout == 0:
+				self.input_dropout_mask = np.ones_like(z1)
+			else:
+				self.input_dropout_mask = (np.random.rand(*z1.shape) > input_dropout).astype(float)
+			z1 = z1 * self.input_dropout_mask / (1.0 - input_dropout) # dropout on z1
+			self.hidout = self.sigmoid(z1)  # output of first hidden layer
+			
+			z2 = self.hidout.dot(self.W2) - self.B2
+			if hidden_dropout == 0:
+				self.hidden_dropout_mask = np.ones_like(z2)
+			else:
+				self.hidden_dropout_mask = (np.random.rand(*z2.shape) > hidden_dropout).astype(float)
+			z2 = z2 * self.hidden_dropout_mask / (1.0 - hidden_dropout) # dropout on z2
+			self.out = self.sigmoid(z2)
+		
+		elif self.dropout_type == DropoutType.DROP_CONNECT:
+			if input_dropout == 0:
+				self.input_dropout_mask = np.ones_like(self.W1)
+			else:
+				self.input_dropout_mask = (np.random.rand(*self.W1.shape) > input_dropout).astype(float)
+
+			z1 = X.dot(self.W1 * self.input_dropout_mask / (1.0 - input_dropout)) - self.B1
+			self.hidout = self.sigmoid(z1)  # output of first hidden layer
+
+			if hidden_dropout == 0:
+				self.hidden_dropout_mask = np.ones_like(self.W2)
+			else:
+				self.hidden_dropout_mask = (np.random.rand(*self.W2.shape) > hidden_dropout).astype(float)
+			z2 = self.hidout.dot(self.W2 * self.hidden_dropout_mask / (1.0 - hidden_dropout)) - self.B2
+			self.out = self.sigmoid(z2)
+
+		elif self.dropout_type == DropoutType.GAUSSIAN_DROPOUT:
+			z1 = X.dot(self.W1) - self.B1
+			if input_dropout == 0:
+				self.input_dropout_mask = np.ones_like(z1)
+			else:
+				sigma1 = input_dropout * (1 - input_dropout)
+				self.input_dropout_mask = np.random.normal(1, sigma1, z1.shape)
+			z1  = z1 * self.input_dropout_mask
+			self.hidout = self.sigmoid(z1)  # output of first hidden layer
+
+			z2 = self.hidout.dot(self.W2) - self.B2
+			if hidden_dropout == 0:
+				self.hidden_dropout_mask = np.ones_like(z2)
+			else:
+				sigma2 = hidden_dropout * (1 - hidden_dropout)
+				self.hidden_dropout_mask = np.random.normal(1, sigma2, z2.shape)
+			z2 = z2 * self.hidden_dropout_mask
+			self.out = self.sigmoid(z2)
+
+		else: # no dropout
+			z1 = X.dot(self.W1) - self.B1
+			self.hidout = self.sigmoid(z1)  # output of first hidden layer
+			z2 = self.hidout.dot(self.W2) - self.B2
+			self.out = self.sigmoid(z2)  # output second hidden layer
+
 
 	def BackwardPass(self, Input, desired):
-		out_delta = (desired - self.out) * (self.out * (1 - self.out))
-		hid_delta = out_delta.dot(self.W2.T) * (self.hidout * (1 - self.hidout))
+	    if self.dropout_type == DropoutType.ORIGIN:
+        	out_delta = (desired - self.out) * (self.out * (1 - self.out))
+			hid_delta = out_delta.dot(self.W2.T) * (self.hidout * (1 - self.hidout))
 
-		#self.W2 += (self.hidout.T.dot(out_delta) * self.lrate)
-		#self.B2 += (-1 * self.lrate * out_delta)
-		#self.W1 += (Input.T.dot(hid_delta) * self.lrate)
-		#self.B1 += (-1 * self.lrate * hid_delta)
+			self.W2 += self.lrate * self.hidout[:, np.newaxis].dot((self.hidden_dropout_mask * out_delta / (1.0 - self.hidden_dropout))[np.newaxis, :])
+			self.B2 += -self.lrate * (self.hidden_dropout_mask * out_delta / (1.0 - self.hidden_dropout))
+			self.W1 += self.lrate * Input[:, np.newaxis].dot((self.input_dropout_mask * hid_delta / (1.0 - self.input_dropout))[np.newaxis, :])
+			self.B1 += -self.lrate * (self.input_dropout_mask * hid_delta / (1.0 - self.input_dropout))
 
-		layer = 1  # hidden to output
-		for x in range(0, self.Top[layer]):
-			for y in range(0, self.Top[layer + 1]):
-				self.W2[x, y] += self.lrate * out_delta[y] * self.hidout[x]
-		for y in range(0, self.Top[layer + 1]):
-			self.B2[y] += -1 * self.lrate * out_delta[y]
+		elif self.dropout_type == DropoutType.DROP_CONNECT:
+			out_delta = (desired - self.out) * (self.out * (1 - self.out))
+			hid_delta = out_delta.dot(self.W2.T) * (self.hidout * (1 - self.hidout))
 
-		layer = 0  # Input to Hidden
-		for x in range(0, self.Top[layer]):
-			for y in range(0, self.Top[layer + 1]):
-				self.W1[x, y] += self.lrate * hid_delta[y] * Input[x]
-		for y in range(0, self.Top[layer + 1]):
-			self.B1[y] += -1 * self.lrate * hid_delta[y]
+			self.W2 += self.lrate * self.hidout[:, np.newaxis].dot(out_delta[np.newaxis, :]) * self.hidden_dropout_mask / (1.0 - self.hidden_dropout)
+			self.B2 += -self.lrate * (out_delta)
+			self.W1 += self.lrate * Input[:, np.newaxis].dot(hid_delta[np.newaxis, :]) * self.input_dropout_mask / (1.0 - self.input_dropout)
+			self.B1 += -self.lrate * (hid_delta)
+
+		elif self.dropout_type == DropoutType.GAUSSIAN_DROPOUT:
+			out_delta = (desired - self.out) * (self.out * (1 - self.out))
+			hid_delta = out_delta.dot(self.W2.T) * (self.hidout * (1 - self.hidout))
+
+			self.W2 += self.lrate * self.hidout[:, np.newaxis].dot((self.hidden_dropout_mask * out_delta)[np.newaxis, :])
+			self.B2 += -self.lrate * (self.hidden_dropout_mask * out_delta)
+			self.W1 += self.lrate * Input[:, np.newaxis].dot((self.input_dropout_mask * hid_delta)[np.newaxis, :])
+			self.B1 += -self.lrate * (self.input_dropout_mask * hid_delta)
+		else:
+			out_delta = (desired - self.out) * (self.out * (1 - self.out))
+			hid_delta = out_delta.dot(self.W2.T) * (self.hidout * (1 - self.hidout))
+
+			self.W2 += self.lrate * self.hidout[:, np.newaxis].dot(out_delta[np.newaxis, :])
+			self.B2 += -self.lrate * out_delta
+			self.W1 += self.lrate * Input[:, np.newaxis].dot(hid_delta[np.newaxis, :])
+			self.B1 += -self.lrate * hid_delta
 
 	def decode(self, w):
 		w_layer1size = self.Top[0] * self.Top[1]
@@ -119,19 +200,17 @@ class Network:
 		return fx
 
 
-
-# --------------------------------------------------------------------------
-
-# -------------------------------------------------------------------
-
-
 class MCMC:
-	def __init__(self,  use_langevin_gradients , l_prob,  learn_rate,  samples, traindata, testdata, topology):
+	def __init__(self,  use_langevin_gradients , l_prob,  learn_rate,  input_dropout, hidden_dropout, dropout_type, samples, traindata, testdata, topology):
 		self.samples = samples  # NN topology [input, hidden, output]
 		self.topology = topology  # max epocs
 		self.traindata = traindata  #
 		self.testdata = testdata 
 		self.use_langevin_gradients  =  use_langevin_gradients 
+
+		self.input_dropout = input_dropout
+		self.hidden_dropout = hidden_dropout
+		self.dropout_type = dropout_type
 
 		self.l_prob = l_prob # likelihood prob
 
@@ -200,7 +279,7 @@ class MCMC:
 		step_eta = tau_limit #exp 1
 		# --------------------- Declare FNN and initialize
 		 
-		neuralnet = Network(self.topology, self.traindata, self.testdata, self.learn_rate)
+		neuralnet = Network(self.topology, self.traindata, self.testdata, self.learn_rate, self.input_dropout, self.hidden_dropout, self.dropout_type)
 		print('evaluate Initial w')
 
 		pred_train = neuralnet.evaluate_proposal(self.traindata, w)
@@ -364,9 +443,13 @@ def main():
 
 		l_prob = 0.5
 		learn_rate = 0.01
+		input_dropout = 0.1
+		hidden_dropout = 0.1
+		dropout_type = DropoutType.GAUSSIAN_DROPOUT
+
 
 		timer = time.time() 
-		mcmc = MCMC( use_langevin_gradients , l_prob,  learn_rate, numSamples, traindata, testdata, topology)  # declare class
+		mcmc = MCMC( use_langevin_gradients , l_prob,  learn_rate, input_dropout, hidden_dropout, dropout_type, numSamples, traindata, testdata, topology)  # declare class
 
 		[pos_w, pos_tau, fx_train, fx_test, x_train, x_test, rmse_train, rmse_test, accept_ratio] = mcmc.sampler(w_limit, tau_limit)
 		print('sucessfully sampled')
