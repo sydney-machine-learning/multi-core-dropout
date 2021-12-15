@@ -22,7 +22,6 @@ from scipy.stats import norm
 #np.random.seed(1)
 
 import io  
-
 from enum import Enum
 class DropoutType(Enum):
     ORIGIN = 1
@@ -31,7 +30,7 @@ class DropoutType(Enum):
 
 class Network:
 
-    def __init__(self, Topo, Train, Test, learn_rate, input_dropout, hidden_dropout, dropout_type: DropoutType):
+    def __init__(self, Topo, Train, Test, learn_rate, input_dropout, hidden_dropout, dropout_type=DropoutType.ORIGIN):
         self.Top = Topo  # NN topology [input, hidden, output]
         self.TrainData = Train
         self.TestData = Test
@@ -79,7 +78,8 @@ class Network:
             else:
                 self.hidden_dropout_mask = (np.random.rand(*z2.shape) > hidden_dropout).astype(float)
             z2 = z2 * self.hidden_dropout_mask / (1.0 - hidden_dropout) # dropout on z2
-            self.out = self.sigmoid(z2)
+            self.out = self.sigmoid(z2)  # output second hidden layer
+            self.pred_class = np.argmax(self.out)
 
         elif self.dropout_type == DropoutType.DROP_CONNECT:
             if input_dropout == 0:
@@ -96,6 +96,7 @@ class Network:
                 self.hidden_dropout_mask = (np.random.rand(*self.W2.shape) > hidden_dropout).astype(float)
             z2 = self.hidout.dot(self.W2 * self.hidden_dropout_mask / (1.0 - hidden_dropout)) - self.B2
             self.out = self.sigmoid(z2)
+            self.pred_class = np.argmax(self.out)
 
         elif self.dropout_type == DropoutType.GAUSSIAN_DROPOUT:
             z1 = X.dot(self.W1) - self.B1
@@ -115,23 +116,29 @@ class Network:
                 self.hidden_dropout_mask = np.random.normal(1, sigma2, z2.shape)
             z2 = z2 * self.hidden_dropout_mask
             self.out = self.sigmoid(z2)
+            self.pred_class = np.argmax(self.out)
 
-        else: # no dropout
+        else:
             z1 = X.dot(self.W1) - self.B1
             self.hidout = self.sigmoid(z1)  # output of first hidden layer
             z2 = self.hidout.dot(self.W2) - self.B2
             self.out = self.sigmoid(z2)  # output second hidden layer
+            self.pred_class = np.argmax(self.out)
 
-    def BackwardPass(self, Input, desired):
+    def BackwardPass(self, Input, desired): # since data outputs and number of output neuons have different orgnisation
+        onehot = np.zeros((desired.size, self.Top[2]))
+        onehot[np.arange(desired.size),int(desired)] = 1
+        desired = onehot
+
         if self.dropout_type == DropoutType.ORIGIN:
-            out_delta = (desired - self.out) * (self.out * (1 - self.out))
-            hid_delta = out_delta.dot(self.W2.T) * (self.hidout * (1 - self.hidout))
+            out_delta = (desired - self.out)*(self.out*(1 - self.out))
+            hid_delta = np.dot(out_delta,self.W2.T) * (self.hidout * (1 - self.hidout))
 
-            self.W2 += self.lrate * self.hidout[:, np.newaxis].dot((self.hidden_dropout_mask * out_delta / (1.0 - self.hidden_dropout))[np.newaxis, :])
-            self.B2 += -self.lrate * (self.hidden_dropout_mask * out_delta / (1.0 - self.hidden_dropout))
-            self.W1 += self.lrate * Input[:, np.newaxis].dot((self.input_dropout_mask * hid_delta / (1.0 - self.input_dropout))[np.newaxis, :])
-            self.B1 += -self.lrate * (self.input_dropout_mask * hid_delta / (1.0 - self.input_dropout))
-
+            self.W2 += np.dot(self.hidout.T,self.hidden_dropout_mask * out_delta / (1.0 - self.hidden_dropout) * self.lrate)
+            self.B2 += (-1 * self.lrate * self.hidden_dropout_mask * out_delta / (1.0 - self.hidden_dropout))
+            Input = Input.reshape(1,self.Top[0])
+            self.W1 += np.dot(Input.T,(self.input_dropout_mask * hid_delta / (1.0 - self.input_dropout) * self.lrate))
+            self.B1 += (-1 * self.lrate * self.input_dropout_mask * hid_delta / (1.0 - self.input_dropout))
         elif self.dropout_type == DropoutType.DROP_CONNECT:
             out_delta = (desired - self.out) * (self.out * (1 - self.out))
             hid_delta = out_delta.dot(self.W2.T) * (self.hidout * (1 - self.hidout))
@@ -157,7 +164,6 @@ class Network:
             self.B2 += -self.lrate * out_delta
             self.W1 += self.lrate * Input[:, np.newaxis].dot(hid_delta[np.newaxis, :])
             self.B1 += -self.lrate * hid_delta
-
 
     def decode(self, w):
         w_layer1size = self.Top[0] * self.Top[1]
@@ -202,8 +208,8 @@ class Network:
                 pat = i
                 Input = data[pat, 0:self.Top[0]]
                 Desired = data[pat, self.Top[0]:]
-                self.ForwardPass(Input,"dropconnect")
-                self.BackwardPass(Input, "dropconnect", Desired)
+                self.ForwardPass(Input)
+                self.BackwardPass(Input, Desired)
         w_updated = self.encode()
 
         return  w_updated
@@ -220,7 +226,7 @@ class Network:
 
         for i in range(0, size):  # to see what fx is produced by your current weight update
             Input = data[i, 0:self.Top[0]]
-            self.ForwardPass(Input, "dropconnect", eval=False)
+            self.ForwardPass(Input, eval=True)
             fx[i] = self.pred_class
             prob[i] = self.softmax()
 
@@ -231,9 +237,9 @@ class Network:
  
 
 
-class ptReplica(multiprocessing.Process): #class is defined as inheriting from multiprocess.Process
-#The first thing ptRplica does in its initialization is to initialize its base Process, to ensure it's ready to run
-    def __init__(self, use_langevin_gradients, learn_rate, input_dropout, hidden_dropout, dropout_type, w,  minlim_param, maxlim_param, samples, traindata, testdata, topology, burn_in, temperature, swap_interval, path, parameter_queue, main_process,event ):
+class ptReplica(multiprocessing.Process):
+
+    def __init__(self, use_langevin_gradients, learn_rate, input_dropout, hidden_dropout, dropout_type, w, minlim_param, maxlim_param, samples, traindata, testdata, topology, burn_in, temperature, swap_interval, path, parameter_queue, main_process,event ):
         #MULTIPROCESSING VARIABLES
         multiprocessing.Process.__init__(self)
         self.processID = temperature
@@ -265,7 +271,6 @@ class ptReplica(multiprocessing.Process): #class is defined as inheriting from m
         self.sgd_depth = 1 # always should be 1
 
         self.learn_rate = learn_rate
-
         self.input_dropout = input_dropout
         self.hidden_dropout = hidden_dropout
         self.dropout_type = dropout_type
@@ -278,15 +283,7 @@ class ptReplica(multiprocessing.Process): #class is defined as inheriting from m
 
         return np.sqrt(((pred-actual)**2).mean())
 
-    '''
-    def rmse_per_output(self, pred, actual):
-        individual_rmse = np.zeros(self.topology[2])
-        for i in range(0, self.topology[2]):
-            individual_rmse[i] = np.sqrt(np.square(pred[:, i] - actual[:, i]).mean())
-        return individual_rmse
-        '''
-        
-    def accuracy(self,pred,actual):
+    def accuracy(self,pred,actual ):
         count = 0
         for i in range(pred.shape[0]):
             if pred[i] == actual[i]:
@@ -310,27 +307,6 @@ class ptReplica(multiprocessing.Process): #class is defined as inheriting from m
 
         return [lhood/self.adapttemp, fx, rmse]
 
-    '''
-    def likelihood_func(self, fnn, data, w, tau_sq):
-        y = data[:, self.topology[0]: self.topology[0] + self.topology[-1]]
-        fx = fnn.evaluate_proposal(data, w)
-        #rmse = self.rmse(fx, y) 
-        indi_rmse = self.rmse_per_output(fx, y)
-        rmse = np.mean(indi_rmse)
-
-        mae = self.mae(fx, y)
-        mape = self.mape(fx, y)
- 
-
-        n = (y.shape[0] * y.shape[1]) # number of samples x number of outputs (prediction horizon)
-        
-        p1 = - (n/2) * np.log(2 * math.pi * tau_sq) 
-        p2 =  (1/2*tau_sq) 
-        
-        log_lhood =  p1 - (p2 *  np.sum(np.square(y- fx)) )
-
-        return [ log_lhood / self.adapttemp, fx, rmse, indi_rmse, mae, mape]'''
-
     def prior_likelihood(self, sigma_squared, nu_1, nu_2, w):
         h = self.topology[1]  # number hidden neurons
         d = self.topology[0]  # number input neurons
@@ -339,16 +315,6 @@ class ptReplica(multiprocessing.Process): #class is defined as inheriting from m
         log_loss = part1 - part2
         return log_loss
 
-    '''
-    def prior_likelihood(self, sigma_squared, nu_1, nu_2, w, tausq):
-        h = self.topology[1]  # number hidden neurons
-        d = self.topology[0]  # number input neurons
-        part1 = -1 * ((d * h + h + 2) / 2) * np.log(sigma_squared)
-        part2 = 1 / (2 * sigma_squared) * (sum(np.square(w)))
-        log_loss = part1 - part2 - (1 + nu_1) * np.log(tausq) - (nu_2 / tausq)
-        return log_loss
-        '''
-    
     def run(self):
         #INITIALISING FOR FNN
         testsize = self.testdata.shape[0]
@@ -377,8 +343,6 @@ class ptReplica(multiprocessing.Process): #class is defined as inheriting from m
         acc_train = np.zeros(samples)
         acc_test = np.zeros(samples)
         learn_rate = self.learn_rate
-        input_dropout = self.input_dropout
-        hidden_dropout = self.hidden_dropout
  
         #Random Initialisation of weights
         w = self.w
@@ -432,6 +396,9 @@ class ptReplica(multiprocessing.Process): #class is defined as inheriting from m
 
 
         self.event.clear()
+
+        w_traces = list()
+
         for i in range(samples-1):  # Begin sampling --------------------------------------------------------------------------
 
             ratio = ((samples -i) /(samples*1.0)) 
@@ -568,7 +535,11 @@ class ptReplica(multiprocessing.Process): #class is defined as inheriting from m
                 w= result[0:w.size]     
                 eta = result[w.size]
                 #likelihood = result[w.size+1]
- 
+
+            w_traces.append(w)
+        
+        file_name = self.path + '/traces/w_traces_' + str(self.temperature) + '_.npy'
+        np.save(file_name, w_traces)
 
         param = np.concatenate([w, np.asarray([eta]).reshape(1), np.asarray([likelihood]),np.asarray([self.temperature]),np.asarray([i])])
         #print('SWAPPED PARAM',self.temperature,param)
@@ -758,13 +729,13 @@ class ParallelTempering:
         if self.geometric == True:
             betas = self.default_beta_ladder(2, ntemps=self.num_chains, Tmax=self.maxtemp)      
             for i in range(0, self.num_chains):         
-                self.temperatures.append(np.inf if betas[i] is 0 else 1.0/betas[i])
+                self.temperatures.append(np.inf if betas[i] == 0 else 1.0/betas[i])
                 print (self.temperatures[i])
         else:
  
             tmpr_rate = (self.maxtemp /self.num_chains)
             temp = 1
-            for i in range(0, self.num_chains):            
+            for i in xrange(0, self.num_chains):            
                 self.temperatures.append(temp)
                 temp += tmpr_rate
                 print(self.temperatures[i])
@@ -781,7 +752,7 @@ class ParallelTempering:
         for i in range(0, self.num_chains):
 
             w = np.random.randn(self.num_param)
-            self.chains.append(ptReplica( self.use_langevin_gradients, self.learn_rate, self.input_dropout, self.hidden_dropout, self.dropout_type, w,  self.minlim_param, self.maxlim_param, self.NumSamples,self.traindata,self.testdata,self.topology,self.burn_in,self.temperatures[i],self.swap_interval,self.path,self.parameter_queue[i],self.wait_chain[i],self.event[i]))
+            self.chains.append(ptReplica( self.use_langevin_gradients, self.learn_rate, self.input_dropout, self.hidden_dropout, self.dropout_type, w, self.minlim_param, self.maxlim_param, self.NumSamples,self.traindata,self.testdata,self.topology,self.burn_in,self.temperatures[i],self.swap_interval,self.path,self.parameter_queue[i],self.wait_chain[i],self.event[i]))
 
     def surr_procedure(self,queue):
 
@@ -1023,7 +994,7 @@ class ParallelTempering:
 
 def main():
 
-    for i in range(3, 9) :
+    for i in range(4,5):
 
 
         problem = i
@@ -1032,7 +1003,7 @@ def main():
 
         #DATA PREPROCESSING 
         if problem == 1: #Wine Quality White
-            data  = np.genfromtxt('./DATA/winequality-red.csv',delimiter=';')
+            data  = np.genfromtxt('DATA/winequality-red.csv',delimiter=';')
             data = data[1:,:] #remove Labels
             classes = data[:,11].reshape(data.shape[0],1)
             features = data[:,0:11]
@@ -1041,9 +1012,9 @@ def main():
             hidden = 50
             ip = 11 #input
             output = 10
-            NumSample = 50000 
+            NumSample = 10000 
         if problem == 3: #IRIS
-            data  = np.genfromtxt('./DATA/iris.csv',delimiter=';')
+            data  = np.genfromtxt('DATA/iris.csv',delimiter=';')
             classes = data[:,4].reshape(data.shape[0],1)-1
             features = data[:,0:4]
  
@@ -1052,9 +1023,9 @@ def main():
             hidden = 12
             ip = 4 #input
             output = 3
-            NumSample = 50000 
+            NumSample = 10000 
         if problem == 2: #Wine Quality White
-            data  = np.genfromtxt('./DATA/winequality-white.csv',delimiter=';')
+            data  = np.genfromtxt('DATA/winequality-white.csv',delimiter=';')
             data = data[1:,:] #remove Labels
             classes = data[:,11].reshape(data.shape[0],1)
             features = data[:,0:11]
@@ -1063,26 +1034,26 @@ def main():
             hidden = 50
             ip = 11 #input
             output = 10
-            NumSample = 50000 
+            NumSample = 10000 
         if problem == 4: #Ionosphere
-            traindata = np.genfromtxt('./DATA/Ions/Ions/ftrain.csv',delimiter=',')[:,:-1]
-            testdata = np.genfromtxt('./DATA/Ions/Ions/ftest.csv',delimiter=',')[:,:-1]
+            traindata = np.genfromtxt('DATA/Ions/Ions/ftrain.csv',delimiter=',')[:,:-1]
+            testdata = np.genfromtxt('DATA/Ions/Ions/ftest.csv',delimiter=',')[:,:-1]
             name = "Ionosphere"
             hidden = 50
             ip = 34 #input
             output = 2
-            NumSample =50000 
+            NumSample =10000 
         if problem == 5: #Cancer
-            traindata = np.genfromtxt('./DATA/Cancer/ftrain.txt',delimiter=' ')[:,:-1]
-            testdata = np.genfromtxt('./DATA/Cancer/ftest.txt',delimiter=' ')[:,:-1]
+            traindata = np.genfromtxt('DATA/Cancer/ftrain.txt',delimiter=' ')[:,:-1]
+            testdata = np.genfromtxt('DATA/Cancer/ftest.txt',delimiter=' ')[:,:-1]
             name = "Cancer"
             hidden = 12
             ip = 9 #input
             output = 2
-            NumSample =50000
+            NumSample =10000
     
         if problem == 6: #Bank additional
-            data = np.genfromtxt('./DATA/Bank/bank-processed.csv',delimiter=';')
+            data = np.genfromtxt('DATA/Bank/bank-processed.csv',delimiter=';')
             classes = data[:,20].reshape(data.shape[0],1)
             features = data[:,0:20]
             separate_flag = True
@@ -1090,10 +1061,10 @@ def main():
             hidden = 50
             ip = 20 #input
             output = 2
-            NumSample = 50000 
+            NumSample = 10000 
         if problem == 7: #PenDigit
-            traindata = np.genfromtxt('./DATA/PenDigit/train.csv',delimiter=',')
-            testdata = np.genfromtxt('./DATA/PenDigit/test.csv',delimiter=',')
+            traindata = np.genfromtxt('DATA/PenDigit/train.csv',delimiter=',')
+            testdata = np.genfromtxt('DATA/PenDigit/test.csv',delimiter=',')
             name = "PenDigit"
             for k in range(16):
                 mean_train = np.mean(traindata[:,k])
@@ -1106,9 +1077,9 @@ def main():
             hidden = 30
             output = 10
 
-            NumSample = 50000 
+            NumSample = 10000 
         if problem == 8: #Chess
-            data  = np.genfromtxt('./DATA/chess.csv',delimiter=';')
+            data  = np.genfromtxt('DATA/chess.csv',delimiter=';')
             classes = data[:,6].reshape(data.shape[0],1)
             features = data[:,0:6]
             separate_flag = True
@@ -1117,7 +1088,7 @@ def main():
             ip = 6 #input
             output = 18
 
-            NumSample = 50000
+            NumSample = 10000
 
 
             # Rohits set of problems - processed data
@@ -1168,16 +1139,16 @@ def main():
         learn_rate = 0.01  # in case langevin gradients are used. Can select other values, we found small value is ok. 
         input_dropout = 0.1
         hidden_dropout = 0.1
-        dropout_type = DropoutType.GAUSSIAN_DROPOUT
+        dropout_type = DropoutType.DROP_CONNECT
 
         use_langevin_gradients =False # False leaves it as Random-walk proposals. Note that Langevin gradients will take a bit more time computationally
 
 
 
 
-        problemfolder = 'fix_likeh/gaussian_dropout/results/'  # change this to your directory for results output - produces large datasets
+        problemfolder = './dropconnect/results/'  # change this to your directory for results output - produces large datasets
 
-        problemfolder_db = 'fix_likeh/gaussian_dropout/results_db/'  # save main results
+        problemfolder_db = './dropconnect/results_db/'  # save main results
 
     
 
@@ -1205,9 +1176,9 @@ def main():
         
     
 
-        pt = ParallelTempering( use_langevin_gradients,  learn_rate, input_dropout, hidden_dropout, dropout_type, traindata, testdata, topology, num_chains, maxtemp, NumSample, swap_interval, path)
+        pt = ParallelTempering( use_langevin_gradients, learn_rate, input_dropout, hidden_dropout, dropout_type, traindata, testdata, topology, num_chains, maxtemp, NumSample, swap_interval, path)
 
-        directories = [  path+'/predictions/', path+'/posterior', path+'/results', path+'/surrogate', path+'/surrogate/learnsurrogate_data', path+'/posterior/pos_w',  path+'/posterior/pos_likelihood',path+'/posterior/surg_likelihood',path+'/posterior/accept_list'  ]
+        directories = [  path+'/predictions/', path+'/posterior', path+'/results', path+'/surrogate', path+'/surrogate/learnsurrogate_data', path+'/posterior/pos_w',  path+'/posterior/pos_likelihood',path+'/posterior/surg_likelihood',path+'/posterior/accept_list', path+'/traces']
     
         for d in directories:
             pt.make_directory((filename)+ d)	
