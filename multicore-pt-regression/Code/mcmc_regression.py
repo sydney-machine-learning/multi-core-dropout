@@ -334,7 +334,7 @@ class MCMC:
 
 
 def main():
-	for problem in range(2, 3): 
+	for problem in range(1, 7): 
 
 		hidden = 5
 		input = 4  #
@@ -355,11 +355,26 @@ def main():
 			traindata = np.loadtxt("Data_OneStepAhead/Mackey/train.txt")
 			testdata = np.loadtxt("Data_OneStepAhead/Mackey/test.txt")  #
 			name	= "Mackey"
-		  
+		if problem == 4:
+			traindata = np.loadtxt("Data_OneStepAhead/Lorenz/train.txt")
+			testdata    = np.loadtxt("Data_OneStepAhead/Lorenz/test.txt")  #
+			name    = "Lorenz"
+		if problem == 5:
+			traindata = np.loadtxt( "Data_OneStepAhead/Rossler/train.txt")
+			testdata    = np.loadtxt( "Data_OneStepAhead/Rossler/test.txt")    #
+			name    = "Rossler"
+		if problem == 6:
+			traindata = np.loadtxt("Data_OneStepAhead/Henon/train.txt")
+			testdata    = np.loadtxt("Data_OneStepAhead/Henon/test.txt")    #
+			name    = "Henon"
+		if problem == 7:
+			traindata = np.loadtxt("Data_OneStepAhead/ACFinance/train.txt") 
+			testdata    = np.loadtxt("Data_OneStepAhead/ACFinance/test.txt")    #
+			name    = "ACFinance"  
 
 		topology = [input, hidden, output]
 		random.seed(time.time())
-		numSamples = 10000  # need to decide yourself
+		numSamples = 50000  # need to decide yourself
 		use_langevin_gradients  = True
 
 		l_prob = 0.5

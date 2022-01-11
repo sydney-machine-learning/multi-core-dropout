@@ -1003,7 +1003,7 @@ def main():
         output = 1
         topology = [ip, hidden, output]
 
-        NumSample = 10000
+        NumSample = 50000
 
 
         ###############################
