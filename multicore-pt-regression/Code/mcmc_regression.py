@@ -359,7 +359,7 @@ def main():
 
 		topology = [input, hidden, output]
 		random.seed(time.time())
-		numSamples = 5000  # need to decide yourself
+		numSamples = 10000  # need to decide yourself
 		use_langevin_gradients  = True
 
 		l_prob = 0.5
