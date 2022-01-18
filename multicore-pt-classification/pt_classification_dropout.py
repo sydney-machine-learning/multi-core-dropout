@@ -994,7 +994,7 @@ class ParallelTempering:
 
 def main():
 
-    for i in range(4,5):
+    for i in range(1,9):
 
 
         problem = i
@@ -1012,7 +1012,7 @@ def main():
             hidden = 50
             ip = 11 #input
             output = 10
-            NumSample = 10000 
+            NumSample = 50000 
         if problem == 3: #IRIS
             data  = np.genfromtxt('DATA/iris.csv',delimiter=';')
             classes = data[:,4].reshape(data.shape[0],1)-1
@@ -1023,7 +1023,7 @@ def main():
             hidden = 12
             ip = 4 #input
             output = 3
-            NumSample = 10000 
+            NumSample = 50000 
         if problem == 2: #Wine Quality White
             data  = np.genfromtxt('DATA/winequality-white.csv',delimiter=';')
             data = data[1:,:] #remove Labels
@@ -1034,7 +1034,7 @@ def main():
             hidden = 50
             ip = 11 #input
             output = 10
-            NumSample = 10000 
+            NumSample = 50000 
         if problem == 4: #Ionosphere
             traindata = np.genfromtxt('DATA/Ions/Ions/ftrain.csv',delimiter=',')[:,:-1]
             testdata = np.genfromtxt('DATA/Ions/Ions/ftest.csv',delimiter=',')[:,:-1]
@@ -1042,7 +1042,7 @@ def main():
             hidden = 50
             ip = 34 #input
             output = 2
-            NumSample =10000 
+            NumSample =50000 
         if problem == 5: #Cancer
             traindata = np.genfromtxt('DATA/Cancer/ftrain.txt',delimiter=' ')[:,:-1]
             testdata = np.genfromtxt('DATA/Cancer/ftest.txt',delimiter=' ')[:,:-1]
@@ -1050,7 +1050,7 @@ def main():
             hidden = 12
             ip = 9 #input
             output = 2
-            NumSample =10000
+            NumSample =50000
     
         if problem == 6: #Bank additional
             data = np.genfromtxt('DATA/Bank/bank-processed.csv',delimiter=';')
@@ -1061,7 +1061,7 @@ def main():
             hidden = 50
             ip = 20 #input
             output = 2
-            NumSample = 10000 
+            NumSample = 50000 
         if problem == 7: #PenDigit
             traindata = np.genfromtxt('DATA/PenDigit/train.csv',delimiter=',')
             testdata = np.genfromtxt('DATA/PenDigit/test.csv',delimiter=',')
@@ -1077,7 +1077,7 @@ def main():
             hidden = 30
             output = 10
 
-            NumSample = 10000 
+            NumSample = 50000 
         if problem == 8: #Chess
             data  = np.genfromtxt('DATA/chess.csv',delimiter=';')
             classes = data[:,6].reshape(data.shape[0],1)
@@ -1088,7 +1088,7 @@ def main():
             ip = 6 #input
             output = 18
 
-            NumSample = 10000
+            NumSample = 50000
 
 
             # Rohits set of problems - processed data
@@ -1129,26 +1129,26 @@ def main():
 
 
          
-        maxtemp = 10
+        maxtemp = 2
  
         num_chains = 10
-        swap_ratio = 0.02 #float(sys.argv[1])
+        swap_ratio = 0.01 #float(sys.argv[1])
         swap_interval = int(swap_ratio * NumSample/num_chains)    # int(swap_ratio * (NumSample/num_chains)) #how ofen you swap neighbours. note if swap is more than Num_samples, its off
         burn_in = 0.5
      
-        learn_rate = 0.01  # in case langevin gradients are used. Can select other values, we found small value is ok. 
+        learn_rate = 0.1  # in case langevin gradients are used. Can select other values, we found small value is ok. 
         input_dropout = 0.1
         hidden_dropout = 0.1
         dropout_type = DropoutType.DROP_CONNECT
 
-        use_langevin_gradients =False # False leaves it as Random-walk proposals. Note that Langevin gradients will take a bit more time computationally
+        use_langevin_gradients =True # False leaves it as Random-walk proposals. Note that Langevin gradients will take a bit more time computationally
 
 
 
 
-        problemfolder = './dropconnect/results/'  # change this to your directory for results output - produces large datasets
+        problemfolder = 'fix_likeh/dropconnect/results/'  # change this to your directory for results output - produces large datasets
 
-        problemfolder_db = './dropconnect/results_db/'  # save main results
+        problemfolder_db = 'fix_likeh/dropconnect/results_db/'  # save main results
 
     
 

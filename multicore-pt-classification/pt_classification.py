@@ -920,7 +920,7 @@ class ParallelTempering:
 
 def main():
 
-    for i in range(3, 9) :
+    for i in range(1, 9) :
 
 
         problem = i
@@ -1055,16 +1055,16 @@ def main():
 
 
          
-        maxtemp = 10
+        maxtemp = 2
  
         num_chains = 10
-        swap_ratio = 0.02 #float(sys.argv[1]) - to use for run.sh
+        swap_ratio = 0.01 #float(sys.argv[1]) - to use for run.sh
         swap_interval = int(swap_ratio * NumSample/num_chains)    # int(swap_ratio * (NumSample/num_chains)) #how ofen you swap neighbours. note if swap is more than Num_samples, its off
         burn_in = 0.5
      
-        learn_rate = 0.01  # in case langevin gradients are used. Can select other values, we found small value is ok. 
+        learn_rate = 0.1  # in case langevin gradients are used. Can select other values, we found small value is ok. 
 
-        use_langevin_gradients =False # False leaves it as Random-walk proposals. Note that Langevin gradients will take a bit more time computationally
+        use_langevin_gradients =True # False leaves it as Random-walk proposals. Note that Langevin gradients will take a bit more time computationally
 
 
 

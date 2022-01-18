@@ -460,7 +460,7 @@ def main():
         learn_rate = 0.01
         input_dropout = 0.1
         hidden_dropout = 0.1
-        dropout_type = DropoutType.DROP_CONNECT
+        dropout_type = DropoutType.ORIGIN
 
 
         timer = time.time() 
@@ -496,7 +496,7 @@ def main():
         print(rmse_tr, rmsetr_std, rmse_tes, rmsetest_std)
 
  
-        outres_db = open('result_dropconnect.txt', "a+")
+        outres_db = open('result_origin.txt', "a+")
 
         np.savetxt(outres_db, ( use_langevin_gradients ,    learn_rate, rmse_tr, rmsetr_std, rmse_tes, rmsetest_std, accept_ratio, timetotal), fmt='%1.5f')
 
