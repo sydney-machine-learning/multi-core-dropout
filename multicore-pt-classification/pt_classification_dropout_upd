@@ -1156,9 +1156,9 @@ def main():
 
 
 
-        problemfolder = '/home/rohit/Desktop/PT/PT_EvalSwapRW/'  # change this to your directory for results output - produces large datasets
+        problemfolder = 'fix_likeh/dropconnect/results/'  # change this to your directory for results output - produces large datasets
 
-        problemfolder_db = 'PT_EvalSwapRW/'  # save main results
+        problemfolder_db = 'fix_likeh/dropconnect/results_db/'  # save main results
 
     
 
