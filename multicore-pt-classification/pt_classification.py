@@ -661,7 +661,7 @@ class ParallelTempering:
  
             tmpr_rate = (self.maxtemp /self.num_chains)
             temp = 1
-            for i in xrange(0, self.num_chains):            
+            for i in range(0, self.num_chains):            
                 self.temperatures.append(temp)
                 temp += tmpr_rate
                 print(self.temperatures[i])
@@ -920,7 +920,7 @@ class ParallelTempering:
 
 def main():
 
-    for i in range(1, 9) :
+    for i in range(6, 8) :
 
 
         problem = i
@@ -987,7 +987,7 @@ def main():
             hidden = 50
             ip = 20 #input
             output = 2
-            NumSample = 50000 
+            NumSample = 10000 
         if problem == 7: #PenDigit
             traindata = np.genfromtxt('DATA/PenDigit/train.csv',delimiter=',') #relative path (needs to cd the current folder that contains DATA)
             testdata = np.genfromtxt('DATA/PenDigit/test.csv',delimiter=',') # / - absolute path, no /: relative path -> use relative path to run on diff computers
@@ -1003,7 +1003,7 @@ def main():
             hidden = 30
             output = 10
 
-            NumSample = 50000 
+            NumSample = 10000 
         if problem == 8: #Chess
             data  = np.genfromtxt('DATA/chess.csv',delimiter=';')
             classes = data[:,6].reshape(data.shape[0],1)
@@ -1055,14 +1055,14 @@ def main():
 
 
          
-        maxtemp = 2
+        maxtemp = 10
  
         num_chains = 10
-        swap_ratio = 0.01 #float(sys.argv[1]) - to use for run.sh
+        swap_ratio = 0.02 #float(sys.argv[1]) - to use for run.sh
         swap_interval = int(swap_ratio * NumSample/num_chains)    # int(swap_ratio * (NumSample/num_chains)) #how ofen you swap neighbours. note if swap is more than Num_samples, its off
         burn_in = 0.5
      
-        learn_rate = 0.1  # in case langevin gradients are used. Can select other values, we found small value is ok. 
+        learn_rate = 0.01  # in case langevin gradients are used. Can select other values, we found small value is ok. 
 
         use_langevin_gradients =True # False leaves it as Random-walk proposals. Note that Langevin gradients will take a bit more time computationally
 

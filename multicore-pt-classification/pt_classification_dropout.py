@@ -145,6 +145,7 @@ class Network:
 
             self.W2 += self.lrate * self.hidout[:, np.newaxis].dot(out_delta[np.newaxis, :]) * self.hidden_dropout_mask / (1.0 - self.hidden_dropout)
             self.B2 += -self.lrate * (out_delta)
+            Input = Input.reshape(1,self.Top[0])
             self.W1 += self.lrate * Input[:, np.newaxis].dot(hid_delta[np.newaxis, :]) * self.input_dropout_mask / (1.0 - self.input_dropout)
             self.B1 += -self.lrate * (hid_delta)
 
@@ -154,6 +155,7 @@ class Network:
 
             self.W2 += self.lrate * self.hidout[:, np.newaxis].dot((self.hidden_dropout_mask * out_delta)[np.newaxis, :])
             self.B2 += -self.lrate * (self.hidden_dropout_mask * out_delta)
+            Input = Input.reshape(1,self.Top[0])
             self.W1 += self.lrate * Input[:, np.newaxis].dot((self.input_dropout_mask * hid_delta)[np.newaxis, :])
             self.B1 += -self.lrate * (self.input_dropout_mask * hid_delta)
         else:
@@ -162,6 +164,7 @@ class Network:
 
             self.W2 += self.lrate * self.hidout[:, np.newaxis].dot(out_delta[np.newaxis, :])
             self.B2 += -self.lrate * out_delta
+            Input = Input.reshape(1,self.Top[0])
             self.W1 += self.lrate * Input[:, np.newaxis].dot(hid_delta[np.newaxis, :])
             self.B1 += -self.lrate * hid_delta
 
